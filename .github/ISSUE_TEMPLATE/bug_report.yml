@@ -1,0 +1,68 @@
+name: 故障反馈 / Bug report
+description: 报告启动失败、异常退出、记忆检索或子 agent 协作问题。
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈。本项目仍处于 Beta / 实验性阶段，当前未完成 Windows 桌面端验收。
+
+        启动故障可先尝试弹窗中的 **Disable third-party plugins, back up profile patch, and restart**；它会禁用第三方插件、备份 profile patch 并尝试重启，其他第三方插件也会受影响。
+
+        请保留诊断日志，提交前遮盖密钥、令牌和私人信息。不需要上传整个知识库或完整会话记录。
+  - type: input
+    id: versions
+    attributes:
+      label: DSH 与插件版本
+      description: 请分别填写，无法进入界面时可填写安装包版本或标明未知。
+      placeholder: "DSH 0.2.1-rc.2；dsh-memory-team 0.5.2"
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: 操作系统与架构
+      placeholder: "Windows 11 x64 / macOS arm64；如使用 CLI，请补充 node -v"
+    validations:
+      required: true
+  - type: textarea
+    id: installation
+    attributes:
+      label: 安装方式与相关插件
+      description: 填写实际安装 spec、桌面端或 CLI、profile 类型，以及最近新增或更新的其他插件；不要填写账号凭据。
+      placeholder: "通过桌面插件管理器安装 https://github.com/ytsu-ki/dsh-memory-team.git#v0.5.2"
+    validations:
+      required: true
+  - type: dropdown
+    id: memory_backend
+    attributes:
+      label: 记忆库配置
+      options:
+        - 未额外配置，使用默认 SQLite
+        - 已配置 Markdown / Basic Memory
+        - 不确定或与此无关
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 复现步骤、预期结果与实际结果
+      description: 请说明是安装时、启用时、重启时还是运行任务时出现，以及是否每次发生。
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostic_log
+    attributes:
+      label: Diagnostic report 诊断日志
+      description: |
+        请附上弹窗 Diagnostic report 指向的 crash-...-host.log，可将文件拖入此处。
+        尽量保留 Failed plugins、第一条异常和完整堆栈；截图末尾的等待服务列表通常不足以定位根因。
+        若没有日志，请说明原因。提交前遮盖密钥、令牌、用户名和其他私人信息。
+      placeholder: "附上经过必要遮盖的日志，或粘贴 Failed plugins 部分及第一条异常堆栈。"
+    validations:
+      required: true
+  - type: textarea
+    id: recovery
+    attributes:
+      label: 禁用插件后的恢复情况
+      description: 是否尝试过故障弹窗的恢复选项？恢复后能否启动？如未尝试请说明。
