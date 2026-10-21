@@ -1,0 +1,8 @@
+node_modules/
+.pnpm-store/
+*.tgz
+.DS_Store
+.local/
+DeepSeek-Harness-诊断-*.md
+*.sqlite
+*.sqlite-*
