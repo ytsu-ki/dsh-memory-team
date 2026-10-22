@@ -10,6 +10,16 @@ import { MemoryStore } from '../lib/memory.js'
 import { KnowledgeStore } from '../lib/basic-memory.js'
 import { inspectWindowsAcl } from '../lib/windows-acl.js'
 
+test('the read-only ACL query closes unused child standard input', async () => {
+  let closed = false
+  const value = { path: 'fixture', owner: 'owner', inheritance_disabled: false, rules: [] }
+  const executeFile = () => Object.assign(Promise.resolve({ stdout: JSON.stringify(value) }), {
+    child: { stdin: { end() { closed = true } } },
+  })
+  assert.deepEqual(await inspectWindowsAcl('fixture', { executeFile }), value)
+  assert.equal(closed, true, 'a fixed query must not wait for an open input pipe')
+})
+
 test('ACL paths are data, including quotes and PowerShell syntax; failures are reported without raw stderr', async t => {
   const moduleKeys = ['PSModulePath', 'WinPSModulePath', 'PSModuleAnalysisCachePath']
   const original = moduleKeys.map(key => process.env[key])
@@ -23,6 +33,7 @@ test('ACL paths are data, including quotes and PowerShell syntax; failures are r
     assert.equal(options.env.DSH_ACL_TARGET, path)
     assert(!Object.keys(options.env).some(key => /^(?:PSModulePath|WinPSModulePath|PSModuleAnalysisCachePath)$/i.test(key)))
     assert.match(args.at(-1), /Get-Acl -LiteralPath/)
+    assert.match(args.at(-1), /\[System\.IO\.Path\]::Combine\(\$PSHOME, 'Modules'\)/)
     assert(!/Set-ExecutionPolicy|Bypass|Invoke-Expression/.test(args.join(' ')))
     return { stdout: '\uFEFF' + JSON.stringify(result) }
   }
@@ -44,7 +55,12 @@ test('Windows ACL diagnostics inspect actual SQLite and index files without clai
   await knowledge.save(project, { key: 'acl-probe', title: 'ACL probe', kind: 'fact', summary: 'Synthetic local evidence.', evidence: 'Acceptance fixture.', files: [] }, 'acl-test')
   await knowledge.search(project, 'acl-probe')
   const index = knowledge.indexFor(project); await index.persist()
-  const entries = await Promise.all([database, index.snapshot].map(path => inspectWindowsAcl(path)))
+  const executeFile = (...args) => {
+    const request = promisify(execFile)(...args)
+    request.catch(error => t.diagnostic(`ACL child failure: ${JSON.stringify({ code: error.code, killed: error.killed, stdout: error.stdout, stderr: error.stderr })}`))
+    return request
+  }
+  const entries = await Promise.all([database, index.snapshot].map(path => inspectWindowsAcl(path, { executeFile })))
   assert.equal(entries.length, 2)
   assert(entries.every(entry => entry.owner && entry.rules.length && typeof entry.inheritance_disabled === 'boolean'))
   t.diagnostic(`Read-only ACL evidence (effective access is not inferred): ${JSON.stringify(entries)}`)
