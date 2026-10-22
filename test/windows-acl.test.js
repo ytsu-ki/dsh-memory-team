@@ -60,7 +60,9 @@ test('Windows ACL diagnostics inspect actual SQLite and index files without clai
     request.catch(error => t.diagnostic(`ACL child failure: ${JSON.stringify({ code: error.code, killed: error.killed, stdout: error.stdout, stderr: error.stderr })}`))
     return request
   }
-  const entries = await Promise.all([database, index.snapshot].map(path => inspectWindowsAcl(path, { executeFile })))
+  // The public CLI inspects one path per process; avoid competing cold PowerShell starts.
+  const entries = []
+  for (const path of [database, index.snapshot]) entries.push(await inspectWindowsAcl(path, { executeFile }))
   assert.equal(entries.length, 2)
   assert(entries.every(entry => entry.owner && entry.rules.length && typeof entry.inheritance_disabled === 'boolean'))
   t.diagnostic(`Read-only ACL evidence (effective access is not inferred): ${JSON.stringify(entries)}`)
