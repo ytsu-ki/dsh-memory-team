@@ -21,6 +21,7 @@ dsh plugin --profile windows-memory-test add 'C:\Downloads\dsh-memory-team-0.5.3
 - 原 home 桶的旧记录不删除、不自动迁移。确实需要共享 home 项目时，可显式配置它；操作前核对记录归属。没有 Git 的项目若要让多个子目录共享记忆，应设置其明确的 `projectRoot`。
 - Windows 不论笔记数量均使用原生递归监听，其他平台保持原来的分支。原生路径先等待写入稳定窗口，并在读取前后校对文件签名；读取中变化的笔记先移出派生索引，再排队重读。检索排序、私密过滤与密钥筛查继续沿用原实现。
 - 初次登记或重建监听后排队补扫一次元数据，收录此前扫描到监听登记之间写入而未产生可见事件的文件。元数据校对与监听变动统一经过 100ms 文件稳定检查；插件自身完成保存的即时刷新不增加该等待。不会以固定睡眠或测试脚本手动 reconcile 作为恢复前提。
+- Windows 原生监听不报告被监听目录自身的改名，因此增加一个非递归的上一级目录观察；项目目录暂时消失时仍保留它，以便新建同名目录后自行恢复。卸载时关闭两类监听。整个 vault 或其祖先移动仍需单独测试，不能由项目目录通过外推。
 - 通知以固定 100ms 窗口合并；待处理路径最多 2048 个，超出后合并为一次元数据校对。持续通知不会无限推迟更新。无文件名或目录级通知触发受节流的目录身份检查；目录消失或被替换时关闭旧句柄，不依赖监听器主动发送 error。
 - 监听创建失败、运行错误或目录身份变化后继续每 60 秒元数据核对。同一目录上的失败监听至少间隔 5 秒才可重建；新目录身份可立即重新绑定。`metadata-only` 表示实时监听降级，不保证新外部文件立即可检索；无事件时的恢复可能要等下次核对。
 - 状态新增 `plugin_version`、`loaded_at`、`runtime.node/uv/pid`、`index.last_reconciled_at`、监听批次/溢出/创建计数及 `secret_scanner_error`。扫描器自动安装脚本仍不支持 Windows；默认 `builtin-only` 不代表经过真实 Betterleaks 验收。
@@ -49,7 +50,7 @@ dsh plugin --profile windows-memory-test add 'C:\Downloads\dsh-memory-team-0.5.3
 node .\scripts\inspect-windows-acl.mjs 'C:\Users\your-name\.dsh\profiles\windows-memory-test\data\dsh-memory-team.sqlite'
 ```
 
-Node 入口把路径作为环境变量数据传给固定的 `Get-Acl -LiteralPath` 查询，不通过 `-File` 加载工作区 `.ps1`。旧 `.ps1` 入口保留作手工兼容；在低完整性目录中它仍可能被 PowerShell 5.1 拒绝加载，自动化验收使用 Node 入口。查询不可用会明确失败，不回报“权限正常”。Windows 测试只在专用临时目录设置 Low 标签，结束后删除，不改既有目录标签。
+Node 入口把路径作为环境变量数据传给固定的 `Get-Acl -LiteralPath` 查询，不通过 `-File` 加载工作区 `.ps1`。子进程移除继承的 PowerShell 模块路径和分析缓存变量，由 Windows PowerShell 自行建立适配的模块路径，避免从 PowerShell 7 经 Node 启动时混用模块；不改变父进程环境或执行策略。旧 `.ps1` 入口保留作手工兼容；在低完整性目录中它仍可能被 PowerShell 5.1 拒绝加载，自动化验收使用 Node 入口。查询不可用会明确失败，不回报“权限正常”。Windows 测试只在专用临时目录设置 Low 标签，结束后删除，不改既有目录标签。
 
 数据库、Markdown、索引快照和 history/trash 都是本地明文。Windows 的 `0600` 数值不能代表 POSIX 的所有者权限；当前实现继承 Windows ACL，不自动修改。诊断只列出所有者、继承状态和访问规则，不计算完整有效权限，也不修改 ACL。检查自定义共享目录时，应特别核对广泛用户组的读取授权；不要仅凭一个 `0o666` 或脚本运行成功判断数据公开或私密。
 

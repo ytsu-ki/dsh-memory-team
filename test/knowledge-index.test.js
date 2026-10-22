@@ -244,6 +244,25 @@ test('twenty directory replacements recover through notifications without manual
   assert.equal(index.watcherError, null)
 })
 
+test('the parent observer survives a missing project root and is closed with the index', async t => {
+  const f = await fixture(t)
+  await f.put('before-parent', '目录消失前的证据')
+  await f.store.search(f.project, 'before-parent')
+  const index = f.store.indexFor(f.project)
+  if (process.platform !== 'win32') await index.configureParentWatcher()
+  const observer = index.parentWatcher
+  let closed = false
+  observer.once('close', () => { closed = true })
+  await rename(index.scope, `${index.scope}-missing`)
+  await eventually(() => index.watcher === null && index.entries.size === 0)
+  assert.equal(index.parentWatcher, observer)
+  assert.equal(closed, false)
+  await f.put('after-parent', '目录恢复后的证据')
+  await eventually(async () => (await f.store.search(f.project, 'after-parent')).some(record => record.key === 'after-parent'))
+  await f.store.close()
+  await eventually(() => closed)
+})
+
 test('continuous notifications flush while edits continue and event bursts keep a bounded queue', async t => {
   const watchers = syntheticWatcher(t), f = await fixture(t)
   const path = await f.put('stream', '原始内容')

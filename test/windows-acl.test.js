@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, rm, copyFile, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, rm, copyFile, writeFile, realpath } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -10,13 +10,18 @@ import { MemoryStore } from '../lib/memory.js'
 import { KnowledgeStore } from '../lib/basic-memory.js'
 import { inspectWindowsAcl } from '../lib/windows-acl.js'
 
-test('ACL paths are data, including quotes and PowerShell syntax; failures are reported without raw stderr', async () => {
+test('ACL paths are data, including quotes and PowerShell syntax; failures are reported without raw stderr', async t => {
+  const moduleKeys = ['PSModulePath', 'WinPSModulePath', 'PSModuleAnalysisCachePath']
+  const original = moduleKeys.map(key => process.env[key])
+  t.after(() => moduleKeys.forEach((key, i) => { if (original[i] === undefined) delete process.env[key]; else process.env[key] = original[i] }))
+  for (const key of moduleKeys) process.env[key] = 'PowerShell-7-only-fixture'
   const path = "C:\\中文 空格\\'quoted\" $();`target.sqlite"
   const result = { path, owner: 'LOCAL\\owner', inheritance_disabled: false, rules: [] }
   const executeFile = async (file, args, options) => {
     assert.equal(file, 'powershell.exe'); assert(args.includes('-Command')); assert(!args.includes('-File'))
     assert(!args.some(arg => arg.includes(path)))
     assert.equal(options.env.DSH_ACL_TARGET, path)
+    assert(!Object.keys(options.env).some(key => /^(?:PSModulePath|WinPSModulePath|PSModuleAnalysisCachePath)$/i.test(key)))
     assert.match(args.at(-1), /Get-Acl -LiteralPath/)
     assert(!/Set-ExecutionPolicy|Bypass|Invoke-Expression/.test(args.join(' ')))
     return { stdout: '\uFEFF' + JSON.stringify(result) }
@@ -60,5 +65,5 @@ test('the Node ACL entry point works from a disposable low-integrity source dire
     timeout: 15000, windowsHide: true, encoding: 'utf8',
   })
   const acl = JSON.parse(stdout)
-  assert.equal(acl.path, target); assert(acl.owner && Array.isArray(acl.rules))
+  assert.equal(await realpath(acl.path), await realpath(target)); assert(acl.owner && Array.isArray(acl.rules))
 })
