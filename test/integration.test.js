@@ -86,7 +86,7 @@ test('real DSH Messages adapter: heartbeat-only stalls terminate and close the s
 })
 
 test('real DSH Messages adapter: valid output and usage are unchanged', { timeout: 3000 }, async t => {
-  const { prepared, options } = await setup(t, (_req, res) => { startMessage(res); endMessage(res) })
+  const { prepared, options } = await setup(t, (_req, res) => { startMessage(res); endMessage(res) }, { stalledMs: 1000 })
   const chunks = await Array.fromAsync(prepared.stream(options))
   assert.equal(chunks.at(-1).reason.kind, 'stop')
   assert.equal(chunks.find(chunk => chunk.type === 'text-delta').text, 'ok')

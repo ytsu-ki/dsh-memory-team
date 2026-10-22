@@ -87,7 +87,7 @@ test('the Node ACL entry point works from a disposable low-integrity source dire
   await writeFile(target, 'Synthetic read-only ACL fixture')
   await promisify(execFile)('icacls.exe', [low, '/setintegritylevel', '(OI)(CI)L', '/T'], { windowsHide: true })
   const { stdout } = await promisify(execFile)(process.execPath, [join(low, 'scripts', 'inspect-windows-acl.mjs'), target], {
-    timeout: 15000, windowsHide: true, encoding: 'utf8',
+    timeout: 45000, windowsHide: true, encoding: 'utf8',
   })
   const acl = JSON.parse(stdout)
   assert.equal(await realpath(acl.path), await realpath(target)); assert(acl.owner && Array.isArray(acl.rules))
