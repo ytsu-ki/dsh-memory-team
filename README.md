@@ -8,7 +8,7 @@
 
 本项目仍处于早期开发与测试阶段，架构、稳定性和兼容性验证尚不完善。目前已收到安装或启用后宿主无法启动、异常退出的反馈，根因和触发条件仍在排查。给遇到问题的用户带来的不便，在此致歉；也感谢大家愿意提供反馈、帮助改进。
 
-目前的实际桌面验收平台是 **macOS arm64**。beta.2 已在 Windows Node 22.17.0 / 24.18.0 完成自动化测试（各 76 通过、0 失败、3 跳过），权限诊断与安装包新进程验证通过。本候选新增监听重建后的补扫及元数据校对稳定性修复；该增量仍需 Windows CI 验证，桌面端两次完整冷启动也尚未完成。当前版本不建议直接启用到承担重要任务的主 profile；需要体验时请先备份配置、会话和知识库，并使用独立测试 profile。
+目前的实际桌面验收平台是 **macOS arm64**。beta.2 已在 Windows Node 22.17.0 / 24.18.0 完成自动化测试（各 76 通过、0 失败、3 跳过），权限诊断与安装包新进程验证通过。本版新增监听重建后的补扫及元数据校对稳定性修复；对应提交的三平台自动化结果见 [Actions](https://github.com/ytsu-ki/dsh-memory-team/actions)，Windows 桌面端两次完整冷启动尚未完成。当前版本不建议直接启用到承担重要任务的主 profile；需要体验时请先备份配置、会话和知识库，并使用独立测试 profile。
 
 1. **应急恢复**：若出现宿主启动故障弹窗，可点击 **Disable third-party plugins, back up profile patch, and restart**。这个恢复操作会禁用第三方插件、备份 profile patch 并尝试重启宿主，其他第三方插件也会受到影响。若仍无法启动，请保留诊断日志和备份继续排查；不要把删除知识库或会话作为默认恢复步骤。
 2. **提交反馈**：请使用 [故障反馈模板](https://github.com/ytsu-ki/dsh-memory-team/issues/new?template=bug_report.yml)，附上弹窗 **Diagnostic report** 指向的 `crash-...-host.log`。日志请尽量保留开头的 **Failed plugins**、第一条异常及完整堆栈，并注明 DSH 版本、系统、安装方式和复现步骤。提交前请遮盖密钥、令牌及其他私人信息。
@@ -17,7 +17,7 @@
 
 DeepSeek Harness 的项目记忆与子 agent 协作插件。目标是减少重复探索、重复验证和串行调查，不给模型请求设置时间上限。
 
-适配并测试 **Harness 0.2.1-rc.2**。当前修复候选 **0.5.3-beta.3**，尚未发布；原公开版本为 **0.5.2**。Windows 修复内容、安装与验收步骤见 [Windows 验收说明](docs/windows-acceptance.md)。旧版流式限时插件的代码留在 `lib/index.js` 和 `docs/legacy-stream-guard.md`，新安装入口不会启用它。
+适配并测试 **Harness 0.2.1-rc.2**。当前试用版本 **0.5.3-beta.3**，安装包、源码包及校验值以 [Releases](https://github.com/ytsu-ki/dsh-memory-team/releases) 为准。Windows 修复内容、安装与验收步骤见 [Windows 验收说明](docs/windows-acceptance.md)。旧版流式限时插件的代码留在 `lib/index.js` 和 `docs/legacy-stream-guard.md`，新安装入口不会启用它。
 
 ## 记忆库与子 agent 分别解决什么问题
 
@@ -66,16 +66,16 @@ Windows 项目统一使用 Node 原生递归监听，避免逐个子目录句柄
 
 ## 安装
 
-下方 Git 安装示例指向原公开版本 v0.5.2，不包含本地候选修复。测试 0.5.3-beta.3 时，请先打包，再通过本地 `.tgz` 的绝对路径安装到独立测试 profile；尚不存在该候选版的公开 Git 标签。参见 [Windows 验收说明](docs/windows-acceptance.md)。
+此版本为实验性试用版。请先核对 [发布页](https://github.com/ytsu-ki/dsh-memory-team/releases/tag/v0.5.3-beta.3) 的版本和 SHA-256，安装到独立测试 profile。可使用下方 Git 标签或下载的 `.tgz` 绝对路径；参见 [Windows 验收说明](docs/windows-acceptance.md)。
 
 1. 在 Harness 打开「插件」→「添加插件」。
-2. 输入 `https://github.com/ytsu-ki/dsh-memory-team.git#v0.5.2`，或下载的打包文件绝对路径，点击安装。
+2. 输入 `https://github.com/ytsu-ki/dsh-memory-team.git#v0.5.3-beta.3`，或下载的打包文件绝对路径，点击安装。
 3. 启用「项目记忆与协作」，确认组件显示「运行中」。
 
 CLI 用户可运行：
 
 ```sh
-dsh plugin --profile desktop add 'https://github.com/ytsu-ki/dsh-memory-team.git#v0.5.2'
+dsh plugin --profile desktop add 'https://github.com/ytsu-ki/dsh-memory-team.git#v0.5.3-beta.3'
 ```
 
 将 `desktop` 换成实际使用的 profile。无需安装 Obsidian 即可使用默认的本地 SQLite 记忆与子 agent 协作；Markdown 知识库、Basic Memory 和凭据扫描按下文选配。

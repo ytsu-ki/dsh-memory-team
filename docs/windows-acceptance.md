@@ -1,6 +1,6 @@
 # Windows 修复候选与验收
 
-本地修复候选为 `0.5.3-beta.3`，尚未发布 Git 标签或替换 v0.5.2 附件。beta.1 的 Windows 调查确认了递归子目录监听阻止父目录改名，以及低完整性目录中的 PowerShell 脚本加载失败。beta.2 的 Windows Node 22.17.0 / 24.18.0 自动化各为 76 通过、0 失败、3 跳过，Low 完整性诊断入口及安装包新进程验证通过。本候选进一步修复监听登记窗口漏事件和元数据校对绕过稳定检查的问题。该增量的 Windows CI、桌面冷启动、真实 Basic Memory 和 Betterleaks 仍需分别验收；原始宿主崩溃的首个异常尚未确认。
+本说明对应 `0.5.3-beta.3` 试用版，旧版 v0.5.2 附件保留。beta.1 的 Windows 调查确认了递归子目录监听阻止父目录改名，以及低完整性目录中的 PowerShell 脚本加载失败。beta.2 的 Windows Node 22.17.0 / 24.18.0 自动化各为 76 通过、0 失败、3 跳过，Low 完整性诊断入口及安装包新进程验证通过。本版进一步修复监听登记窗口漏事件和元数据校对绕过稳定检查的问题，自动化结果以 [Actions](https://github.com/ytsu-ki/dsh-memory-team/actions) 中对应提交为准。Windows 桌面冷启动、真实 Basic Memory 和 Betterleaks 仍需分别验收；原始宿主崩溃的首个异常尚未确认。
 
 ## 安装前
 
@@ -8,7 +8,7 @@
 
 开发者在源码目录运行 `pnpm install --frozen-lockfile --ignore-scripts`、`pnpm check`、`pnpm test`。Node.js 使用 22.17+ 或 24；CI 已配置 Windows / Ubuntu / macOS 的 Node.js 22 / 24，以及 Windows 精确版本 22.17.0、24.18.0。CI 从源码 ZIP 安装并测试，再从 TGZ 安装并运行独立进程冷启动测试。配置存在不代表已运行通过。Windows ACL 诊断通过 Node 调用系统 Windows PowerShell 的固定只读查询，不修改执行策略或既有文件权限。
 
-下例假定已有名为 `windows-memory-test` 的测试 profile，并已将候选包复制到该绝对路径。不要用尚不存在的候选 Git 标签安装：
+下例假定已有名为 `windows-memory-test` 的测试 profile，并已将发布页的安装包复制到该绝对路径：
 
 ```powershell
 dsh plugin --profile windows-memory-test add 'C:\Downloads\dsh-memory-team-0.5.3-beta.3.tgz'
