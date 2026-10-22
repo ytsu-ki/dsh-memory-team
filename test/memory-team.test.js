@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile, readFile, mkdir, realpath } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { randomUUID } from 'node:crypto'
@@ -33,7 +33,7 @@ async function setup(t, response) {
     }
   }
   ctx.llm.registerAdapter(['test'], new Adapter())
-  const fiber = ctx.plugin(plugin, { database: join(dir, 'memory.sqlite'), knowledgeRoot: '', betterleaksCommand: '' })
+  const fiber = ctx.plugin(plugin, { database: join(dir, 'memory.sqlite'), knowledgeRoot: '', betterleaksCommand: '', projectRoot: '' })
   await fiber
   assert(ctx.tools.get('project_memory_search'))
   const agent = await harness.create('parent', { provider: 'test', model: 'test' }, { cwd: dir })
@@ -115,6 +115,49 @@ test('real agent admission persists one bounded memory context and excludes stal
   assert.equal(f.ctx.tools.get('project_memory_search'), undefined)
   assert.equal(f.ctx.tools.get('workflow_status'), undefined)
   assert.equal(f.ctx.sessionProjections.stateOf(f.agent.session, efficiencyProjection.key), undefined)
+})
+
+test('fresh sessions recall saved evidence only in the matching project and expose scope/storage diagnostics', { timeout: 8000 }, async t => {
+  const f = await setup(t), other = await realpath(await mkdtemp(join(tmpdir(), 'dsh-recall-other-')))
+  t.after(() => rm(other, { recursive: true, force: true }))
+  await mkdir(join(other, '.git'))
+  await writeFile(join(f.dir, 'source.txt'), 'version one')
+  const answer = `EVIDENCE-${randomUUID()}`
+  const saved = await f.invoke('project_memory_save', { key: 'fresh-proof', title: 'fresh-proof', kind: 'fact', summary: answer, evidence: 'Synthetic acceptance evidence.', files: ['source.txt'] })
+  assert.equal(saved.isError, false)
+  const status = (await f.invoke('project_memory_status', {})).value
+  assert.equal(status.plugin_version, JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')).version)
+  assert.equal(status.runtime.node, process.versions.node)
+  assert.equal(status.runtime.uv, process.versions.uv)
+  assert.equal(status.runtime.pid, process.pid)
+  assert(Number.isFinite(Date.parse(status.loaded_at)))
+  assert.equal(status.scope.source, 'git')
+  assert.equal(status.database, join(f.dir, 'memory.sqlite'))
+  assert.equal(status.permission_model, process.platform === 'win32' ? 'windows-acl-inherited-unverified' : 'posix-mode')
+  const ask = async (id, cwd, query) => {
+    const agent = await f.harness.create(id, { provider: 'test', model: 'test' }, { cwd })
+    agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: query }] }))
+    await agent.whenIdle()
+    const request = f.received.find(request => request.sessionId === id)
+    assert(request, 'the real AgentLoop must enter a model request')
+    const recalled = request.messages.filter(message => message.source?.kind === 'dsh-memory-team')
+    assert.equal(recalled.length, 1)
+    const events = Array.from({ length: agent.session.seq + 1 }, (_, i) => agent.session.eventAt(i))
+    assert(events.some(event => event?.type === 'user/message' && event.data.source?.kind === 'dsh-memory-team'))
+    return recalled[0].content[0].text
+  }
+  assert((await ask('fresh-hit', f.dir, 'What is fresh-proof?')).includes(answer))
+  for (const [id, cwd, query] of [['unrelated', f.dir, 'zzzz-unrelated-needle'], ['other-project', other, 'What is fresh-proof?']]) {
+    const recall = await ask(id, cwd, query)
+    assert.match(recall, /No matching current memory/); assert(!recall.includes(answer))
+  }
+  await writeFile(join(f.dir, 'source.txt'), 'version two')
+  const stale = await ask('stale-session', f.dir, 'What is fresh-proof?')
+  assert.match(stale, /No matching current memory/); assert(!stale.includes(answer))
+  await f.fiber.dispose()
+  await f.ctx.plugin(plugin, { database: join(f.dir, 'memory.sqlite'), knowledgeRoot: '', betterleaksCommand: '', projectRoot: f.dir })
+  assert.equal((await f.invoke('project_memory_status', {})).value.scope.source, 'explicit')
+  assert.equal((await f.invoke('project_memory_status', {}, await f.harness.create('outside-explicit', { provider: 'test', model: 'test' }, { cwd: other }))).value.project, other)
 })
 
 test('production agent loop admits one repeat reminder and completes without truncation', { timeout: 5000 }, async t => {

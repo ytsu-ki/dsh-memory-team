@@ -1,6 +1,6 @@
 {
   "name": "dsh-memory-team",
-  "version": "0.5.2",
+  "version": "0.5.3-beta.3",
   "description": "Markdown knowledge shared with Basic Memory and Obsidian, automatic task records and native subagent coordination for DeepSeek Harness.",
   "icon": "./icon.jpg",
   "author": "ytsu-ki",
@@ -32,7 +32,10 @@
     "LICENSE",
     "icon.jpg",
     "rules",
-    "scripts/setup-retrieval.mjs"
+    "scripts/setup-retrieval.mjs",
+    "scripts/inspect-windows-acl.ps1",
+    "scripts/inspect-windows-acl.mjs",
+    "docs/windows-acceptance.md"
   ],
   "dsh": {
     "bundle": {
@@ -44,8 +47,9 @@
   },
   "packageManager": "pnpm@11.25.0",
   "scripts": {
-    "check": "node --check lib/memory-team.js && node --check lib/memory.js && node --check lib/team.js && node --check lib/efficiency.js && node --check lib/index.js && node --check lib/guard.js && node --check lib/fetch-scope.js && node --check lib/basic-memory.js && node --check scripts/setup-knowledge.mjs && node --check lib/knowledge-index.js && node --check lib/secrets.js && node --check scripts/setup-retrieval.mjs",
-    "test": "node --test test/*.test.js"
+    "check": "node --check lib/memory-team.js && node --check lib/memory.js && node --check lib/team.js && node --check lib/efficiency.js && node --check lib/index.js && node --check lib/guard.js && node --check lib/fetch-scope.js && node --check lib/basic-memory.js && node --check scripts/setup-knowledge.mjs && node --check lib/knowledge-index.js && node --check lib/secrets.js && node --check lib/windows-acl.js && node --check scripts/inspect-windows-acl.mjs && node --check scripts/setup-retrieval.mjs",
+    "test": "node --test test/*.test.js",
+    "release:prepare": "python3 scripts/prepare-release.py"
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "~3.18.4",

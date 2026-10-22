@@ -7,12 +7,11 @@ import { BasicMemoryClient, KnowledgeStore, decodeNote, redact } from '../lib/ba
 
 async function setup(t) {
   const dir = await realpath(await mkdtemp(join(tmpdir(), 'dsh-knowledge-')))
-  t.after(() => rm(dir, { recursive: true, force: true }))
   const project = join(dir, 'project'), other = join(dir, 'other'), root = join(dir, 'vault')
   await mkdir(project); await mkdir(other)
   const hits = []
   const store = new KnowledgeStore(root, { ttlDays: 30, basicMemoryConfig: join(dir, 'config') }, { search: async () => hits, close: async () => {} })
-  t.after(() => store.close())
+  t.after(async () => { await store.close(); await rm(dir, { recursive: true, force: true }) })
   return { dir, project, other, root, hits, store }
 }
 const fact = { key: 'export', title: '论文导出', kind: 'pitfall', summary: '先确认当前浏览器和页面。', evidence: '验收夹具：确认窗口焦点。', files: [] }
@@ -74,7 +73,7 @@ test('capture records completed/failed/aborted tasks once, omits reasoning and a
 
 test('vault symlinks cannot redirect captures or facts into another directory', async t => {
   const f = await setup(t)
-  await symlink(f.other, join(f.root, 'projects'))
+  await symlink(f.other, join(f.root, 'projects'), process.platform === 'win32' ? 'junction' : 'dir')
   await assert.rejects(f.store.save(f.project, fact, 'session-a'), /symbolic/)
   assert.deepEqual(await readdir(f.other), [])
   await assert.rejects(f.store.save(f.project, { ...fact, summary: 'password=not-a-real-secret' }, 'session-a'), /credential/)

@@ -3,13 +3,15 @@ import assert from 'node:assert/strict'
 import { mkdtemp, writeFile, readFile, rm, mkdir, realpath } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { execFile, spawn } from 'node:child_process'
+import { promisify } from 'node:util'
 import { SecretScanner } from '../lib/secrets.js'
 import { KnowledgeStore, encodeNote } from '../lib/basic-memory.js'
 import { MemoryStore } from '../lib/memory.js'
 
 async function fakeScanner(t, mode = 'normal') {
-  const dir = await realpath(await mkdtemp(join(tmpdir(), 'dsh-secret-test-'))), command = join(dir, 'scanner')
-  await writeFile(command, `#!${process.execPath}
+  const dir = await realpath(await mkdtemp(join(tmpdir(), 'dsh-secret-test-'))), command = join(dir, 'scanner.mjs')
+  await writeFile(command, `
 if (process.argv[2] === 'version') { process.stdout.write('1.9.0\\n'); process.exit(0) }
 const args = process.argv.slice(2)
 if (!args.includes('--validation=false') || !args.includes('--ignore-gitleaks-allow') || Object.keys(process.env).some(k => /BETTERLEAKS|GITLEAKS|TOKEN|PROXY/.test(k))) process.exit(8)
@@ -18,9 +20,14 @@ if (${JSON.stringify(mode)} === 'failure') { process.stderr.write(input); proces
 if (${JSON.stringify(mode)} === 'hang') { setInterval(() => {}, 1000) }
 else process.stdout.write(JSON.stringify(input.includes('SYNTHETIC_CREDENTIAL') ? [{ Secret: 'SYNTHETIC_CREDENTIAL' }] : []))
 `, { mode: 0o700 })
-  const scanner = new SecretScanner(command)
-  t.after(async () => { scanner.close(); await rm(dir, { recursive: true, force: true }) })
-  return { dir, scanner }
+  // The fixture runs through Node on every OS; production still executes the native binary without a shell.
+  const scanner = new SecretScanner(command, {
+    executeFile: (file, args, options) => promisify(execFile)(process.execPath, [file, ...args], options),
+    spawnFile: (file, args, options) => spawn(process.execPath, [file, ...args], options),
+  })
+  const stores = []
+  t.after(async () => { for (const store of stores) await store.close(); scanner.close(); await rm(dir, { recursive: true, force: true }) })
+  return { dir, scanner, stores }
 }
 
 test('scanner strips inherited config/credentials and redacts without corrupting JSON fields', async t => {
@@ -32,6 +39,19 @@ test('scanner strips inherited config/credentials and redacts without corrupting
   assert.deepEqual(await builtin.sanitizeObject({ prompt: 'api_key=private-value', reply: '正常中文。' }),
     { prompt: 'api_key=[credential omitted]', reply: '正常中文。' })
   builtin.close()
+})
+
+test('scanner startup diagnostics distinguish missing executables and unsupported versions without exposing paths', async t => {
+  for (const [code, executeFile] of [
+    ['SCANNER_NOT_FOUND', async () => { throw Object.assign(new Error('private path'), { code: 'ENOENT' }) }],
+    ['SCANNER_VERSION_UNSUPPORTED', async () => ({ stdout: '0.0.0' })],
+    ['SCANNER_BINARY_UNREADABLE', async () => ({ stdout: '1.9.0' })],
+  ]) {
+    const scanner = new SecretScanner('nonexistent-private-path', { executeFile })
+    t.after(() => scanner.close())
+    await assert.rejects(scanner.ready, /memory withheld/)
+    assert.equal(scanner.status, 'unavailable'); assert.equal(scanner.error, code)
+  }
 })
 
 test('scanner failure withholds memory and never copies raw stderr into an error; cancellation kills the child', async t => {
@@ -50,7 +70,7 @@ test('Markdown saves, external recall and legacy SQLite all screen credentials',
   await mkdir(project)
   const store = new KnowledgeStore(join(f.dir, 'vault'), config, { close: async () => {}, search: async () => [] }, f.scanner)
   const legacy = new MemoryStore(join(f.dir, 'legacy.sqlite'), { ...config, scanner: f.scanner })
-  t.after(async () => { await store.close(); legacy.close() })
+  f.stores.push(store, legacy)
   const input = { key: 'sample', title: '中文验收', kind: 'fact', summary: '凭据 SYNTHETIC_CREDENTIAL，仍保留步骤。', evidence: '本地夹具', files: [] }
   const saved = await store.save(project, input, 'session')
   assert(!(await readFile(saved.path, 'utf8')).includes('SYNTHETIC_CREDENTIAL'))

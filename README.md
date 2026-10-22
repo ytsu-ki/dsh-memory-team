@@ -8,7 +8,7 @@
 
 本项目仍处于早期开发与测试阶段，架构、稳定性和兼容性验证尚不完善。目前已收到安装或启用后宿主无法启动、异常退出的反馈，根因和触发条件仍在排查。给遇到问题的用户带来的不便，在此致歉；也感谢大家愿意提供反馈、帮助改进。
 
-目前的实际桌面验收平台是 **macOS arm64**，自动化 CI 仅覆盖 Ubuntu 上的 Node.js 22 / 24；这些结果不代表已完成 Windows 桌面端验收。当前版本不建议直接启用到承担重要任务的主 profile；需要体验时请先备份配置、会话和知识库，并使用独立测试 profile。
+目前的实际桌面验收平台是 **macOS arm64**。beta.2 已在 Windows Node 22.17.0 / 24.18.0 完成自动化测试（各 76 通过、0 失败、3 跳过），权限诊断与安装包新进程验证通过。本候选新增监听重建后的补扫及元数据校对稳定性修复；该增量仍需 Windows CI 验证，桌面端两次完整冷启动也尚未完成。当前版本不建议直接启用到承担重要任务的主 profile；需要体验时请先备份配置、会话和知识库，并使用独立测试 profile。
 
 1. **应急恢复**：若出现宿主启动故障弹窗，可点击 **Disable third-party plugins, back up profile patch, and restart**。这个恢复操作会禁用第三方插件、备份 profile patch 并尝试重启宿主，其他第三方插件也会受到影响。若仍无法启动，请保留诊断日志和备份继续排查；不要把删除知识库或会话作为默认恢复步骤。
 2. **提交反馈**：请使用 [故障反馈模板](https://github.com/ytsu-ki/dsh-memory-team/issues/new?template=bug_report.yml)，附上弹窗 **Diagnostic report** 指向的 `crash-...-host.log`。日志请尽量保留开头的 **Failed plugins**、第一条异常及完整堆栈，并注明 DSH 版本、系统、安装方式和复现步骤。提交前请遮盖密钥、令牌及其他私人信息。
@@ -17,7 +17,7 @@
 
 DeepSeek Harness 的项目记忆与子 agent 协作插件。目标是减少重复探索、重复验证和串行调查，不给模型请求设置时间上限。
 
-适配并测试 **Harness 0.2.1-rc.2**。当前版本 **0.5.2**。旧版流式限时插件的代码留在 `lib/index.js` 和 `docs/legacy-stream-guard.md`，新安装入口不会启用它。
+适配并测试 **Harness 0.2.1-rc.2**。当前修复候选 **0.5.3-beta.3**，尚未发布；原公开版本为 **0.5.2**。Windows 修复内容、安装与验收步骤见 [Windows 验收说明](docs/windows-acceptance.md)。旧版流式限时插件的代码留在 `lib/index.js` 和 `docs/legacy-stream-guard.md`，新安装入口不会启用它。
 
 ## 记忆库与子 agent 分别解决什么问题
 
@@ -32,13 +32,13 @@ DeepSeek Harness 的项目记忆与子 agent 协作插件。目标是减少重�
 
 ## 工作方式
 
-**项目记忆**：配置知识目录后，Basic Memory 索引 Markdown，Obsidian 直接编辑同一批文件。新用户任务进入模型前，按关键词自动带入最多 3 条、合计最多 6000 字符的记录。关闭语义模型和额外总结模型；使用确定性的本地关键词排序，不保证同义表达召回。记忆以真实项目路径隔离：向上找到最近的 `.git`，没有 Git 时使用当前工作目录；不同 worktree 分开保存。未配置知识目录的项目继续使用原 SQLite。
+**项目记忆**：配置知识目录后，Basic Memory 索引 Markdown，Obsidian 直接编辑同一批文件。新用户任务进入模型前，按关键词自动带入最多 3 条、合计最多 6000 字符的记录。关闭语义模型和额外总结模型；使用确定性的本地关键词排序，不保证同义表达召回。记忆以真实项目路径隔离：向上找到最近的 `.git`，没有 Git 时使用当前工作目录；默认不使用 home 或磁盘根目录上的 Git 仓库合并子目录。可配置绝对路径 `projectRoot`，只对该目录及其子目录使用显式作用域，无关目录继续自动识别；有意将 home 作为共享项目时需显式配置。不同 worktree 默认分开保存。旧 home 作用域记录保留，不自动迁移或混入新项目；修改作用域后需先核对记录归属再手动迁移。未配置知识目录的项目继续使用原 SQLite。
 
 **增量检索**：Markdown 仍是原始数据，Orama 3.1.18 保存可重建的本地索引。首次读取项目笔记并建立索引；重启后加载与知识库、项目及扫描规则绑定的快照，核对文件元数据，只重读变化的笔记。常规检索只重新读取排在前面的候选并校验文件指纹，不逐轮读取全部笔记，也不等待 Basic Memory MCP 就绪。Basic Memory 继续运行，供原有索引与编辑工作流使用；增量索引异常时可回退旧 MCP/Markdown 路径。
 
 中文与英文沿用原有的子串匹配和确定性排序：过滤通用指令词，按精确 key、已验证状态、完整标题和词项相关性排序。命中精确 key 或已验证记录的完整标题后，只返回对应条目，不用通用操作说明填满余下位置。Orama 使用适配中文的字符对索引收集候选，不引入 embedding 或总结模型。
 
-最多 1000 个文件的项目使用 Chokidar 5.0.0；更大的项目使用 Node 的目录递归监听，避免 macOS 逐文件监听耗尽句柄。事件合并后增量更新；每 60 秒核对文件元数据以修复漏事件，未改变的正文不重读。新外部内容在监听或核对完成后可检索，命中的旧内容在返回前会重读，删除或转为私密的记录不能仅凭缓存召回。持续写入期间可能暂时检索失败，任务会带诊断继续。索引有内存、磁盘与首次建立成本，不保证所有项目的首次查询更快。
+Windows 项目统一使用 Node 原生递归监听，避免逐个子目录句柄阻碍父目录改名；其他平台最多 1000 个文件使用 Chokidar 5.0.0，更大的项目使用原生递归监听。事件合并后增量更新；每 60 秒核对文件元数据以修复漏事件，未改变的正文不重读。监听创建失败或发生错误时关闭旧监听器，降级为 `metadata-only`，定期核对继续运行并尝试恢复监听；目录身份变化也会重建监听器。索引可用与监听健康分别报告，成功核对不会掩盖持续的监听错误。降级期间新外部内容可能需等到下一次核对后才能检索。命中的旧内容在返回前会重读，删除或转为私密的记录不能仅凭缓存召回。持续写入期间可能暂时检索失败，任务会带诊断继续。索引有内存、磁盘与首次建立成本，不保证所有项目的首次查询更快。
 
 每条记忆包含稳定 key、结论、类型、证据、来源会话、更新时间、版本号和可选文件指纹。关联文件变化、丢失或记录超过 30 天后，不再自动引用；手动搜索可查看失效记录。Markdown 版本由文件内容计算，手动编辑会使旧版本失效；同一进程的并发替换只允许一个成功。更新前保留 history 副本，工具删除移入 trash。与外部编辑器同时保存仍存在文件系统竞争，应先搜索最新版本再更新。
 
@@ -65,6 +65,8 @@ DeepSeek Harness 的项目记忆与子 agent 协作插件。目标是减少重�
 `team_wait` 计入后台等待；可明确识别的纯 shell `sleep 数字`（可附字面量 `echo`）计入主动等待，且不推进工作步骤。包含其他命令、替换或管道的 shell 脚本保留普通工具分类，避免把实际工作误报为等待。
 
 ## 安装
+
+下方 Git 安装示例指向原公开版本 v0.5.2，不包含本地候选修复。测试 0.5.3-beta.3 时，请先打包，再通过本地 `.tgz` 的绝对路径安装到独立测试 profile；尚不存在该候选版的公开 Git 标签。参见 [Windows 验收说明](docs/windows-acceptance.md)。
 
 1. 在 Harness 打开「插件」→「添加插件」。
 2. 输入 `https://github.com/ytsu-ki/dsh-memory-team.git#v0.5.2`，或下载的打包文件绝对路径，点击安装。
@@ -118,7 +120,7 @@ node scripts/setup-retrieval.mjs
 
 脚本从官方 GitHub release 下载固定的 Betterleaks 1.9.0，核对内置 SHA-256，独立安装到 `~/.local/share/dsh-memory-team/betterleaks/1.9.0/`，备份并合并本机设置。支持 macOS/Linux arm64/x64；本次真实验收平台为 macOS arm64。可用 `--archive /absolute/release.tar.gz` 离线安装同一校验版本；`--no-activate` 仅准备程序。重载插件后生效，不需要改 DSH 账号、模型或代理。
 
-可重建快照保存在 Basic Memory 配置目录的 `recall-index/`，权限 0600，不回写原 Markdown；坏快照自动重建。程序和规则的指纹变化会让旧快照失效。Betterleaks 是 MIT，Orama 是 Apache-2.0，Chokidar 是 MIT；Basic Memory 仍由用户独立安装，继续遵守其 AGPL 许可。
+可重建快照保存在 Basic Memory 配置目录的 `recall-index/`，POSIX 权限为 0600，Windows 继承 ACL，不回写原 Markdown；坏快照自动重建。程序和规则的指纹变化会让旧快照失效。Betterleaks 是 MIT，Orama 是 Apache-2.0，Chokidar 是 MIT；Basic Memory 仍由用户独立安装，继续遵守其 AGPL 许可。
 
 ## 使用
 
@@ -169,7 +171,9 @@ node scripts/setup-retrieval.mjs
 
 ## 存储与配置
 
-数据库默认放在 `$DSH_PROFILE_DIR/data/dsh-memory-team.sqlite`；没有 profile 时使用 `$DSH_HOME/data/`，再没有则使用 `~/.dsh/data/`。数据库是本地明文文件，权限为 0600。卸载插件保留数据库，重新安装可继续使用；卸载会移除工具和提示贡献，停止尚未提交的派发，但不擅自结束已移交给 Harness 的子任务。
+数据库默认放在 `$DSH_PROFILE_DIR/data/dsh-memory-team.sqlite`；没有 profile 时使用 `$DSH_HOME/data/`，再没有则使用 `~/.dsh/data/`。数据库是本地明文文件，POSIX 平台设置为 0600；Windows 的实际访问权限取决于继承的 ACL，不能从 `stat().mode` 判断为“仅当前用户可读”。插件不会自动重写 Windows ACL，状态显示 `windows-acl-inherited-unverified`；可用 `node scripts/inspect-windows-acl.mjs '数据库绝对路径'` 只读查看权限条目，条目输出本身不等同于完整有效权限审计。Markdown、派生快照及 history/trash 同样需要按平台核对权限。卸载插件保留数据库，重新安装可继续使用；卸载会移除工具和提示贡献，停止尚未提交的派发，但不擅自结束已移交给 Harness 的子任务。
+
+`project_memory_status` 返回实际加载的 `plugin_version`、`loaded_at`、`runtime.node/uv/pid`、`database`、`scope.source`（`git` / `cwd` / `explicit`）、作用域警告和权限模型。Markdown 索引额外返回 `index.watcher`、`index.watcher_error`、`index.last_reconciled_at`、监听批次和溢出计数与 `index.degraded`，可区分没有相关记忆、作用域不符及监听降级。`knowledgeProject` 只选择 Markdown 后端，不改变项目根目录；需要限定项目身份时使用 `projectRoot`。
 
 **本地存储不代表内容永不离开本机**：命中的记忆会随正常请求发给当前模型服务。原始 Markdown、history 和 trash 仍为本地明文，不自动改写已有文件。给笔记的 YAML 加上 `dsh_private: true`，可将整条笔记排除在插件召回和派生快照之外；即使 `include_stale: true` 也不返回。这个标记不限制用户直接读文件、Basic Memory 自身的工具或其他插件。
 
@@ -182,6 +186,7 @@ node scripts/setup-retrieval.mjs
 | 配置 | 默认 | 范围 / 含义 |
 | --- | --- | --- |
 | `database` | 自动选择 | 自定义时必须为绝对路径 |
+| `projectRoot` | 自动识别 | 可选绝对路径；只合并其自身及子目录；不自动迁移旧记忆 |
 | `knowledgeRoot` | 未配置 | Basic Memory 索引的 Markdown 目录；绝对路径；空字符串可明确停用 |
 | `basicMemoryCommand` | basic-memory | 本地可执行程序路径，独立环境建议使用绝对路径 |
 | `basicMemoryConfig` | 数据目录/basic-memory | 独立 Basic Memory 配置目录；绝对路径 |
@@ -200,6 +205,10 @@ node scripts/setup-retrieval.mjs
 
 ## 验证与开发
 
+Windows 在小库和大库均使用原生递归监听，通知合并有大小上限，持续通知期间也会推进更新；读取前后校对文件签名，目录删除或替换后关闭旧句柄。每次登记或重建监听后补扫一次元数据，收录登记窗口中的写入；外部变动和元数据校对统一经过 100ms 稳定检查，插件自身完成的保存继续即时刷新。同一目录监听失败后限制重建频率，并保留每 60 秒的元数据核对。`metadata-only` 模式下外部修改可能延后进入索引；详细边界见 Windows 验收说明。
+
+维护者使用 `pnpm release:prepare` 统一生成安装 TGZ 和源码 ZIP，并校验运行资源和文件一致性。此发布命令需要 Python 3 标准库；插件运行不需要新增 Python 依赖。`secret_scanner_error` 区分扫描程序缺失、版本不支持、程序不可读及规则不可用。
+
 Node.js 22.17+，pnpm 11.25.0：
 
 ```sh
@@ -217,6 +226,6 @@ BETTERLEAKS_TEST_COMMAND='/absolute/path/to/betterleaks' node --test test/*.test
 
 macOS 上完整生命周期测试需要能加载 npm 原生扩展的 Node.js；有些应用附带的签名运行时会因 Team ID 不同而拒绝加载测试用扩展。使用正常开发版 Node.js 即可，不需要修改系统安全设置。插件本身只使用 Node 内置 SQLite，不依赖这个测试用原生扩展。
 
-GitHub Actions 提供 Node.js 22 / 24 的检查、单元测试和打包；真实 Basic Memory / Betterleaks 测试需显式提供对应可执行程序。发布包只含代码、安装脚本、语言元数据、默认配置、图标、README 和 LICENSE；本地数据库、种子资料、诊断报告与聊天记录已排除。
+GitHub Actions 已配置 Windows / Ubuntu / macOS 与 Node.js 22 / 24，并覆盖 Windows 的 22.17.0、24.18.0；先统一生成候选包，再解压源码 ZIP 检查和测试，最后安装 TGZ 验证独立进程冷启动。配置存在不代表运行通过。Windows 用例通过 Node 调用固定 PowerShell 查询，读取实际 SQLite 与派生快照的 ACL，并在专用 Low 完整性临时目录复测诊断入口。目录逃逸检查在 Windows 使用 junction；仅无法创建的文件符号链接子用例会明确跳过，父目录穿越和目录链接检查继续运行。真实 Basic Memory / Betterleaks 测试需显式提供对应可执行程序。发布包只含代码、安装与诊断脚本、语言元数据、默认配置、图标、README 和 LICENSE；本地数据库、种子资料、诊断报告与聊天记录已排除。
 
 这版改善任务组织和经验复用，不能消除模型服务或代理造成的传输错误。并行协作可能增加总 token 和并发请求，是否更快需要用相同任务做线上对照，不能从本地模拟测试推断具体提速比例。

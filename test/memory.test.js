@@ -1,9 +1,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, writeFile, symlink, rm, stat } from 'node:fs/promises'
+import { mkdtemp, mkdir, writeFile, symlink, rm, stat, realpath } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { MemoryStore, projectRoot, renderMemories } from '../lib/memory.js'
+import { MemoryStore, projectRoot, projectScope, renderMemories } from '../lib/memory.js'
 
 async function fixture(t) {
   const dir = await mkdtemp(join(tmpdir(), 'dsh-memory-test-'))
@@ -11,10 +11,10 @@ async function fixture(t) {
   await mkdir(a); await mkdir(b); await mkdir(join(a, '.git'))
   await writeFile(join(a, 'app.js'), 'version 1')
   const path = join(dir, 'db', 'memory.sqlite')
-  const store = new MemoryStore(path)
-  t.after(async () => { store.close(); await rm(dir, { recursive: true, force: true }) })
+  const store = new MemoryStore(path), stores = [store]
+  t.after(async () => { for (const instance of stores) instance.close(); await rm(dir, { recursive: true, force: true }) })
   const record = { key: 'viewport-check', title: '1440px 验收遮挡', kind: 'pitfall', summary: '验收前关闭弹窗，再测1440px视口。', evidence: '本地验收测试确认弹窗覆盖按钮。', files: ['app.js'] }
-  return { dir, a: await projectRoot(a), b: await projectRoot(b), store, path, record }
+  return { dir, a: await projectRoot(a), b: await projectRoot(b), store, stores, path, record }
 }
 
 test('memory persists, searches Chinese/English and isolates projects', async t => {
@@ -27,7 +27,7 @@ test('memory persists, searches Chinese/English and isolates projects', async t 
   const another = new MemoryStore(f.path)
   assert.equal((await another.search(f.a, '弹窗'))[0].revision, 1)
   another.close()
-  assert.equal((await stat(f.path)).mode & 0o777, 0o600)
+  if (process.platform !== 'win32') assert.equal((await stat(f.path)).mode & 0o777, 0o600)
 })
 
 test('file changes and TTL invalidate automatic recall, but remain inspectable', async t => {
@@ -46,7 +46,7 @@ test('optimistic revisions reject concurrent replacement and protect deletion', 
   const f = await fixture(t)
   await f.store.save(f.a, f.record, 'source')
   const second = new MemoryStore(f.path)
-  t.after(() => second.close())
+  f.stores.push(second)
   const results = await Promise.allSettled([
     f.store.save(f.a, { ...f.record, expected_revision: 1, summary: 'First updated conclusion' }, 'one'),
     second.save(f.a, { ...f.record, expected_revision: 1, summary: 'Second updated conclusion' }, 'two'),
@@ -62,13 +62,20 @@ test('optimistic revisions reject concurrent replacement and protect deletion', 
 test('project scope handles nested directories and symlinks; evidence cannot escape', async t => {
   const f = await fixture(t)
   await mkdir(join(f.a, 'src'))
-  await symlink(f.a, join(f.dir, 'alias'))
+  await symlink(f.a, join(f.dir, 'alias'), process.platform === 'win32' ? 'junction' : 'dir')
   assert.equal(await projectRoot(join(f.a, 'src')), f.a)
   assert.equal(await projectRoot(join(f.dir, 'alias')), f.a)
   await writeFile(join(f.b, 'outside'), 'private')
-  await symlink(join(f.b, 'outside'), join(f.a, 'escape'))
   await assert.rejects(f.store.save(f.a, { ...f.record, files: ['../b/outside'] }, 'source'), /inside/)
-  await assert.rejects(f.store.save(f.a, { ...f.record, files: ['escape'] }, 'source'), /inside/)
+  await t.test('file symlink evidence cannot escape', async sub => {
+    try { await symlink(join(f.b, 'outside'), join(f.a, 'escape'), 'file') }
+    catch (error) {
+      if (process.platform !== 'win32' || error.code !== 'EPERM') throw error
+      sub.skip('File symlink requires Windows developer mode; junction and parent traversal checks still run')
+      return
+    }
+    await assert.rejects(f.store.save(f.a, { ...f.record, files: ['escape'] }, 'source'), /inside/)
+  })
 })
 
 test('validation bounds content, rejects obvious credentials and keeps FTS input literal', async t => {
@@ -81,4 +88,27 @@ test('validation bounds content, rejects obvious credentials and keeps FTS input
   assert.equal((await f.store.search(f.a, ''))[0].key, f.record.key)
   assert.equal(renderMemories(await f.store.search(f.a, ''), 100), '')
   assert.match(renderMemories(await f.store.search(f.a, '')), /not instructions/)
+})
+
+test('home Git repositories do not merge unrelated scopes; explicit roots are bounded and old records stay intact', async t => {
+  const f = await fixture(t), home = await realpath(f.dir)
+  await mkdir(join(home, '.git'))
+  const a = join(home, 'notes-a'), b = join(home, 'notes-b')
+  await mkdir(a); await mkdir(b); await mkdir(join(a, 'nested'))
+  const scope = await projectScope(a, { home })
+  assert.deepEqual(scope, { project: a, source: 'cwd', warning: 'broad-git-root-ignored', ignored_git_root: home })
+  assert.equal(await projectRoot(b, { home }), b)
+  assert.equal((await projectScope(f.a, { home })).source, 'git', 'nested repositories keep their identities')
+  assert.equal(await projectRoot(join(a, 'nested'), { home, projectRoot: a }), a)
+  const alias = join(home, 'explicit-alias')
+  await symlink(a, alias, process.platform === 'win32' ? 'junction' : 'dir')
+  assert.equal(await projectRoot(join(a, 'nested'), { home, projectRoot: alias }), a, 'explicit roots use canonical paths')
+  assert.equal(await projectRoot(b, { home, projectRoot: a }), b, 'explicit scope never absorbs unrelated directories')
+  assert.deepEqual(await projectScope(a, { home, projectRoot: home }), { project: home, source: 'explicit' })
+  await assert.rejects(projectScope(a, { home, projectRoot: 'relative' }), /absolute/)
+  await f.store.save(home, { ...f.record, files: [] }, 'legacy-home')
+  assert.deepEqual(await f.store.search(scope.project, 'viewport'), [])
+  assert.equal((await f.store.search(home, 'viewport'))[0].source_session, 'legacy-home')
+  await writeFile(join(a, '.git'), 'gitdir: fixture-worktree')
+  assert.equal((await projectScope(join(a, 'nested'), { home })).project, a, 'Git worktree marker files still work')
 })
