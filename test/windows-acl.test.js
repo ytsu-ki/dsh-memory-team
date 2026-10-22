@@ -32,9 +32,8 @@ test('ACL paths are data, including quotes and PowerShell syntax; failures are r
     assert(!args.some(arg => arg.includes(path)))
     assert.equal(options.env.DSH_ACL_TARGET, path)
     assert(!Object.keys(options.env).some(key => /^(?:PSModulePath|WinPSModulePath|PSModuleAnalysisCachePath)$/i.test(key)))
-    assert.match(args.at(-1), /Get-Acl -LiteralPath/)
     assert.match(args.at(-1), /\[System\.IO\.Path\]::Combine\(\$PSHOME, 'Modules'\)/)
-    assert(!/Set-ExecutionPolicy|Bypass|Invoke-Expression/.test(args.join(' ')))
+    assert(!/Set-ExecutionPolicy|Bypass|Invoke-Expression|SetAccessControl/.test(args.join(' ')))
     return { stdout: '\uFEFF' + JSON.stringify(result) }
   }
   assert.deepEqual(await inspectWindowsAcl(path, { executeFile }), result)
@@ -60,8 +59,8 @@ test('Windows ACL diagnostics inspect actual SQLite and index files without clai
     args[1] = [...args[1]]
     const trace = stage => `[Console]::Error.WriteLine('ACL probe: ${stage}')\n`
     args[1][args[1].length - 1] = trace('script started') + args[1].at(-1)
-      .replace('$item = Get-Item', trace('before Get-Item') + '$item = Get-Item')
-      .replace('$acl = Get-Acl', trace('before Get-Acl') + '$acl = Get-Acl')
+      .replace('$item = if', trace('before file metadata') + '$item = if')
+      .replace('$acl = $item.GetAccessControl()', trace('before ACL read') + '$acl = $item.GetAccessControl()')
       .replace('[pscustomobject]@{', trace('before JSON') + '[pscustomobject]@{')
     const request = promisify(execFile)(...args)
     request.catch(error => t.diagnostic(`ACL child failure: ${JSON.stringify({ elapsed_ms: Math.round(performance.now() - started), code: error.code, killed: error.killed, stdout: error.stdout, stderr: error.stderr })}`))
@@ -69,9 +68,10 @@ test('Windows ACL diagnostics inspect actual SQLite and index files without clai
   }
   // The public CLI inspects one path per process; avoid competing cold PowerShell starts.
   const entries = []
-  for (const path of [database, index.snapshot]) entries.push(await inspectWindowsAcl(path, { executeFile }))
-  assert.equal(entries.length, 2)
+  for (const path of [database, index.snapshot, project]) entries.push(await inspectWindowsAcl(path, { executeFile }))
+  assert.equal(entries.length, 3)
   assert(entries.every(entry => entry.owner && entry.rules.length && typeof entry.inheritance_disabled === 'boolean'))
+  assert(entries.every(entry => /^S-\d-/.test(entry.owner) && entry.rules.every(rule => /^S-\d-/.test(rule.identity))))
   t.diagnostic(`Read-only ACL evidence (effective access is not inferred): ${JSON.stringify(entries)}`)
 })
 

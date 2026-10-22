@@ -50,7 +50,7 @@ dsh plugin --profile windows-memory-test add 'C:\Downloads\dsh-memory-team-0.5.3
 node .\scripts\inspect-windows-acl.mjs 'C:\Users\your-name\.dsh\profiles\windows-memory-test\data\dsh-memory-team.sqlite'
 ```
 
-Node 入口把路径作为环境变量数据传给固定的 `Get-Acl -LiteralPath` 查询，不通过 `-File` 加载工作区 `.ps1`。子进程移除继承的 PowerShell 模块路径和分析缓存变量，查询时只使用系统 Windows PowerShell 自带模块，并关闭无需输入的标准输入管道，避免跨版本混用模块或等待输入；不改变父进程环境或执行策略。该手动诊断的进程上限为 30 秒，包含 Windows PowerShell / .NET 首次启动；超过上限明确失败。这是诊断工具的等待上限，不限制模型思考。CI 阶段探针曾确认进程在执行查询第一行之前已超过旧 10 秒上限，微软也说明首次启动可能执行优化任务（[启动说明](https://learn.microsoft.com/en-us/powershell/scripting/dev-cross-plat/performance/startup-performance)）。旧 `.ps1` 入口保留作手工兼容；在低完整性目录中它仍可能被 PowerShell 5.1 拒绝加载，自动化验收使用 Node 入口。查询不可用会明确失败，不回报“权限正常”。Windows 测试只在专用临时目录设置 Low 标签，结束后删除，不改既有目录标签。
+Node 入口把路径作为环境变量数据传给固定的 .NET `FileInfo` / `DirectoryInfo.GetAccessControl()` 只读查询，不通过 `-File` 加载工作区 `.ps1`。子进程移除继承的 PowerShell 模块路径和分析缓存变量，查询时只使用系统 Windows PowerShell 自带模块，并关闭无需输入的标准输入管道，ACL 读取直接调用系统 .NET，不加载 Get-Item / Get-Acl 模块，JSON 序列化明确指定系统 Utility 模块；所有者和规则身份使用 SID，避免账户名解析；不改变父进程环境或执行策略。该手动诊断的进程上限为 30 秒，包含 Windows PowerShell / .NET 首次启动；超过上限明确失败。这是诊断工具的等待上限，不限制模型思考。CI 阶段探针曾记录启动第一行前超过旧 10 秒上限，以及 Get-Acl 模块阶段超过 30 秒上限；后者已改用 .NET 只读接口，微软也说明首次启动可能执行优化任务（[启动说明](https://learn.microsoft.com/en-us/powershell/scripting/dev-cross-plat/performance/startup-performance)）。旧 `.ps1` 入口保留作手工兼容；在低完整性目录中它仍可能被 PowerShell 5.1 拒绝加载，自动化验收使用 Node 入口。查询不可用会明确失败，不回报“权限正常”。Windows 测试只在专用临时目录设置 Low 标签，结束后删除，不改既有目录标签。
 
 数据库、Markdown、索引快照和 history/trash 都是本地明文。Windows 的 `0600` 数值不能代表 POSIX 的所有者权限；当前实现继承 Windows ACL，不自动修改。诊断只列出所有者、继承状态和访问规则，不计算完整有效权限，也不修改 ACL。检查自定义共享目录时，应特别核对广泛用户组的读取授权；不要仅凭一个 `0o666` 或脚本运行成功判断数据公开或私密。
 
