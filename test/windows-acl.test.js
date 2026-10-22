@@ -56,8 +56,15 @@ test('Windows ACL diagnostics inspect actual SQLite and index files without clai
   await knowledge.search(project, 'acl-probe')
   const index = knowledge.indexFor(project); await index.persist()
   const executeFile = (...args) => {
+    const started = performance.now()
+    args[1] = [...args[1]]
+    const trace = stage => `[Console]::Error.WriteLine('ACL probe: ${stage}')\n`
+    args[1][args[1].length - 1] = trace('script started') + args[1].at(-1)
+      .replace('$item = Get-Item', trace('before Get-Item') + '$item = Get-Item')
+      .replace('$acl = Get-Acl', trace('before Get-Acl') + '$acl = Get-Acl')
+      .replace('[pscustomobject]@{', trace('before JSON') + '[pscustomobject]@{')
     const request = promisify(execFile)(...args)
-    request.catch(error => t.diagnostic(`ACL child failure: ${JSON.stringify({ code: error.code, killed: error.killed, stdout: error.stdout, stderr: error.stderr })}`))
+    request.catch(error => t.diagnostic(`ACL child failure: ${JSON.stringify({ elapsed_ms: Math.round(performance.now() - started), code: error.code, killed: error.killed, stdout: error.stdout, stderr: error.stderr })}`))
     return request
   }
   // The public CLI inspects one path per process; avoid competing cold PowerShell starts.
